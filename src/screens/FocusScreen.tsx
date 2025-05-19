@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, StyleSheet, SafeAreaView } from "react-native";
-import { Text, Button, IconButton, Portal, Dialog } from "react-native-paper";
+import {
+  Text,
+  Button,
+  IconButton,
+  Portal,
+  Dialog,
+  TextInput,
+} from "react-native-paper";
 import { router } from "expo-router";
 import { useTasks } from "../hooks/useTasks";
+import { useFocus } from "../hooks/useFocus";
 import { Task } from "../services/taskService";
 
 const FOCUS_TIME = 25 * 60; // 25 минут в секундах
@@ -10,11 +18,21 @@ const BREAK_TIME = 5 * 60; // 5 минут в секундах
 
 export const FocusScreen = () => {
   const { tasks } = useTasks();
+  const {
+    activeSession,
+    dailyStats,
+    startSession,
+    endSession,
+    loading,
+    error,
+  } = useFocus();
   const [timeLeft, setTimeLeft] = useState(FOCUS_TIME);
   const [isRunning, setIsRunning] = useState(false);
   const [isBreak, setIsBreak] = useState(false);
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [showTaskSelector, setShowTaskSelector] = useState(false);
+  const [showSessionComplete, setShowSessionComplete] = useState(false);
+  const [sessionNotes, setSessionNotes] = useState("");
 
   // Форматирование времени в формат MM:SS
   const formatTime = (seconds: number) => {
@@ -38,7 +56,7 @@ export const FocusScreen = () => {
       setIsRunning(false);
       if (!isBreak) {
         // Завершение фокуса
-        setShowTaskSelector(true);
+        setShowSessionComplete(true);
       } else {
         // Завершение перерыва
         setIsBreak(false);
@@ -49,10 +67,13 @@ export const FocusScreen = () => {
     return () => clearInterval(interval);
   }, [isRunning, timeLeft, isBreak]);
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!currentTask && !isBreak) {
       setShowTaskSelector(true);
       return;
+    }
+    if (currentTask) {
+      await startSession(currentTask.id);
     }
     setIsRunning(true);
   };
@@ -70,7 +91,6 @@ export const FocusScreen = () => {
     setCurrentTask(task);
     setShowTaskSelector(false);
     setTimeLeft(FOCUS_TIME);
-    setIsRunning(true);
   };
 
   const handleStartBreak = () => {
@@ -80,9 +100,13 @@ export const FocusScreen = () => {
     setCurrentTask(null);
   };
 
-  const handleCompleteSession = () => {
-    // TODO: Сохранить статистику сессии
-    router.back();
+  const handleCompleteSession = async () => {
+    if (activeSession) {
+      await endSession(sessionNotes);
+      setShowSessionComplete(false);
+      setSessionNotes("");
+      router.back();
+    }
   };
 
   return (
@@ -110,17 +134,34 @@ export const FocusScreen = () => {
           </Text>
         </View>
 
+        {dailyStats && (
+          <View style={styles.statsContainer}>
+            <Text variant="bodyMedium">
+              Today's Focus: {Math.floor(dailyStats.total_focus_time / 60)}{" "}
+              minutes
+            </Text>
+            <Text variant="bodyMedium">
+              Sessions: {dailyStats.total_sessions}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.controls}>
           {!isRunning ? (
-            <Button mode="contained" onPress={handleStart}>
+            <Button mode="contained" onPress={handleStart} disabled={loading}>
               {currentTask || isBreak ? "Start" : "Select Task"}
             </Button>
           ) : (
-            <Button mode="contained" onPress={handlePause}>
+            <Button mode="contained" onPress={handlePause} disabled={loading}>
               Pause
             </Button>
           )}
-          <Button mode="outlined" onPress={handleReset} style={styles.button}>
+          <Button
+            mode="outlined"
+            onPress={handleReset}
+            style={styles.button}
+            disabled={loading}
+          >
             Reset
           </Button>
           {!isBreak && (
@@ -128,6 +169,7 @@ export const FocusScreen = () => {
               mode="outlined"
               onPress={handleStartBreak}
               style={styles.button}
+              disabled={loading}
             >
               Take a Break
             </Button>
@@ -157,6 +199,31 @@ export const FocusScreen = () => {
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setShowTaskSelector(false)}>Cancel</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={showSessionComplete}
+          onDismiss={() => setShowSessionComplete(false)}
+        >
+          <Dialog.Title>Session Complete!</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              label="Session Notes"
+              value={sessionNotes}
+              onChangeText={setSessionNotes}
+              multiline
+              numberOfLines={3}
+              style={styles.notesInput}
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowSessionComplete(false)}>
+              Cancel
+            </Button>
+            <Button onPress={handleCompleteSession} loading={loading}>
+              Complete
+            </Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
@@ -200,7 +267,6 @@ const styles = StyleSheet.create({
   },
   timerLabel: {
     marginTop: 8,
-    color: "#666",
   },
   controls: {
     width: "100%",
@@ -210,6 +276,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   taskButton: {
-    marginBottom: 8,
+    marginVertical: 4,
+  },
+  statsContainer: {
+    marginBottom: 24,
+    alignItems: "center",
+  },
+  notesInput: {
+    marginTop: 8,
   },
 });
