@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { View, StyleSheet, SafeAreaView } from "react-native";
-import { TextInput, Button, Text } from "react-native-paper";
+import { TextInput, Button, Text, useTheme } from "react-native-paper";
 import { router } from "expo-router";
 import { useAuth } from "../context/AuthContext";
 
 export const LoginScreen = () => {
+  const theme = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export const LoginScreen = () => {
       console.log("Attempting to sign in with:", email);
       await signIn(email, password);
       console.log("Sign in successful, redirecting to dashboard");
-      router.replace("/dashboard");
+      // router.replace("/dashboard"); // Navigation handled by _layout.tsx
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Login failed. Please check your credentials.");
@@ -36,25 +37,30 @@ export const LoginScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text variant="headlineMedium" style={styles.title}>
+        {/* Consider adding an app logo or icon here later */}
+        <Text variant="headlineLarge" style={styles.title}>
           Welcome Back
         </Text>
 
         <TextInput
-          label="Email"
+          placeholder="Email"
           value={email}
           onChangeText={setEmail}
-          mode="outlined"
+          mode="flat" // Use flat mode for a simpler look
+          underlineColor={theme.colors.onSurfaceVariant} // Use a subtle underline color
+          activeUnderlineColor={theme.colors.primary} // Use primary color when active
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
         />
 
         <TextInput
-          label="Password"
+          placeholder="Password"
           value={password}
           onChangeText={setPassword}
-          mode="outlined"
+          mode="flat" // Use flat mode for a simpler look
+          underlineColor={theme.colors.onSurfaceVariant} // Use a subtle underline color
+          activeUnderlineColor={theme.colors.primary} // Use primary color when active
           secureTextEntry
           style={styles.input}
         />
@@ -66,14 +72,21 @@ export const LoginScreen = () => {
           onPress={handleLogin}
           loading={loading}
           style={styles.button}
+          labelStyle={styles.buttonLabel}
           disabled={loading}
         >
-          {loading ? "Logging in..." : "Login"}
+          Login
         </Button>
 
-        <Button mode="text" onPress={() => router.back()} style={styles.button}>
-          Back to Welcome
+        <Button
+          mode="text"
+          onPress={() => router.replace("/register")}
+          style={[styles.button, styles.textButton]}
+          labelStyle={[styles.buttonLabel, styles.textButtonLabel]}
+        >
+          Don't have an account? Sign Up
         </Button>
+        {/* Removed Back to Welcome button */}
       </View>
     </SafeAreaView>
   );
@@ -82,7 +95,7 @@ export const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#fff", // Keep background white
   },
   content: {
     flex: 1,
@@ -91,17 +104,32 @@ const styles = StyleSheet.create({
   },
   title: {
     textAlign: "center",
-    marginBottom: 30,
+    marginBottom: 40,
+    fontWeight: "bold",
   },
   input: {
     marginBottom: 16,
+    backgroundColor: "transparent", // Ensure no background color for flat mode
   },
   button: {
+    marginTop: 12,
+    borderRadius: 8,
+    paddingVertical: 4,
+  },
+  buttonLabel: {
+    fontSize: 16,
+  },
+  textButton: {
     marginTop: 8,
+  },
+  textButtonLabel: {
+    fontSize: 14,
+    color: "#555", // Darker grey for text button
   },
   error: {
     color: "red",
     textAlign: "center",
     marginBottom: 16,
+    marginTop: 8, // Add margin top to separate from inputs
   },
 });

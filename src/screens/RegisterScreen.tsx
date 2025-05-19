@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { View, StyleSheet, SafeAreaView } from "react-native";
-import { TextInput, Button, Text } from "react-native-paper";
+import { TextInput, Button, Text, useTheme } from "react-native-paper";
 import { router } from "expo-router";
 import { useAuth } from "../context/AuthContext";
 
 export const RegisterScreen = () => {
+  const theme = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -30,7 +31,7 @@ export const RegisterScreen = () => {
     setLoading(true);
     try {
       await signUp(email, password);
-      router.replace("/dashboard");
+      // router.replace("/dashboard"); // Navigation handled by _layout.tsx
     } catch (err: any) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -41,34 +42,41 @@ export const RegisterScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text variant="headlineMedium" style={styles.title}>
+        {/* Consider adding an app logo or icon here later */}
+        <Text variant="headlineLarge" style={styles.title}>
           Create Account
         </Text>
 
         <TextInput
-          label="Email"
+          placeholder="Email"
           value={email}
           onChangeText={setEmail}
-          mode="outlined"
+          mode="flat" // Use flat mode for a simpler look
+          underlineColor={theme.colors.onSurfaceVariant} // Use a subtle underline color
+          activeUnderlineColor={theme.colors.primary} // Use primary color when active
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
         />
 
         <TextInput
-          label="Password"
+          placeholder="Password"
           value={password}
           onChangeText={setPassword}
-          mode="outlined"
+          mode="flat" // Use flat mode for a simpler look
+          underlineColor={theme.colors.onSurfaceVariant} // Use a subtle underline color
+          activeUnderlineColor={theme.colors.primary} // Use primary color when active
           secureTextEntry
           style={styles.input}
         />
 
         <TextInput
-          label="Confirm Password"
+          placeholder="Confirm Password"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
-          mode="outlined"
+          mode="flat" // Use flat mode for a simpler look
+          underlineColor={theme.colors.onSurfaceVariant} // Use a subtle underline color
+          activeUnderlineColor={theme.colors.primary} // Use primary color when active
           secureTextEntry
           style={styles.input}
         />
@@ -80,13 +88,21 @@ export const RegisterScreen = () => {
           onPress={handleRegister}
           loading={loading}
           style={styles.button}
+          labelStyle={styles.buttonLabel}
+          disabled={loading}
         >
           Register
         </Button>
 
-        <Button mode="text" onPress={() => router.back()} style={styles.button}>
-          Back to Welcome
+        <Button
+          mode="text"
+          onPress={() => router.replace("/login")}
+          style={[styles.button, styles.textButton]}
+          labelStyle={[styles.buttonLabel, styles.textButtonLabel]}
+        >
+          Already have an account? Sign In
         </Button>
+        {/* Removed Back to Welcome button */}
       </View>
     </SafeAreaView>
   );
@@ -95,7 +111,7 @@ export const RegisterScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#fff", // Keep background white
   },
   content: {
     flex: 1,
@@ -104,17 +120,32 @@ const styles = StyleSheet.create({
   },
   title: {
     textAlign: "center",
-    marginBottom: 30,
+    marginBottom: 40,
+    fontWeight: "bold",
   },
   input: {
     marginBottom: 16,
+    backgroundColor: "transparent", // Ensure no background color for flat mode
   },
   button: {
+    marginTop: 12,
+    borderRadius: 8,
+    paddingVertical: 4,
+  },
+  buttonLabel: {
+    fontSize: 16,
+  },
+  textButton: {
     marginTop: 8,
+  },
+  textButtonLabel: {
+    fontSize: 14,
+    color: "#555", // Darker grey for text button
   },
   error: {
     color: "red",
     textAlign: "center",
     marginBottom: 16,
+    marginTop: 8, // Add margin top to separate from inputs
   },
 });

@@ -1,7 +1,22 @@
 import React, { useState } from "react";
-import { View, StyleSheet } from "react-native";
-import { Dialog, Portal, TextInput, Button, Text } from "react-native-paper";
+import {
+  Portal,
+  Dialog,
+  TextInput,
+  Button,
+  Text,
+  ActivityIndicator,
+} from "react-native-paper";
+import { View, StyleSheet, ScrollView } from "react-native";
+import { useAuth } from "../context/AuthContext";
+import { aiService } from "../services/aiService";
 import { Task } from "../services/taskService";
+
+interface Message {
+  id: string;
+  text: string;
+  isUser: boolean;
+}
 
 interface AIChatDialogProps {
   visible: boolean;
@@ -9,35 +24,59 @@ interface AIChatDialogProps {
   onTaskCreated: (task: Omit<Task, "id" | "created_at" | "updated_at">) => void;
 }
 
-export const AIChatDialog = ({
+export const AIChatDialog: React.FC<AIChatDialogProps> = ({
   visible,
   onDismiss,
   onTaskCreated,
-}: AIChatDialogProps) => {
-  const [message, setMessage] = useState("");
+}) => {
+  const { user } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!message.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim() || !user) return;
 
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: input,
+      isUser: true,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
     setLoading(true);
+
     try {
-      // TODO: Здесь будет интеграция с AI
-      // Временная заглушка для демонстрации
-      const task = {
-        title: message,
-        description: "Created via AI chat",
-        priority: 1,
-        deadline: new Date().toISOString(),
-        user_id: "", // Будет установлено в родительском компоненте
-        completed: false,
+      let response;
+      if (
+        input.toLowerCase().includes("analyze") ||
+        input.toLowerCase().includes("analysis")
+      ) {
+        response = await aiService.analyzeTasks(user.id);
+      } else {
+        response = await aiService.getTaskSuggestions(user.id, input);
+      }
+
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: response.message,
+        isUser: false,
       };
 
-      onTaskCreated(task);
-      setMessage("");
-      onDismiss();
+      setMessages((prev) => [...prev, aiMessage]);
+
+      if (response.task) {
+        onTaskCreated(response.task);
+      }
     } catch (error) {
-      console.error("AI chat error:", error);
+      console.error("Error in AI chat:", error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Sorry, I encountered an error. Please try again.",
+        isUser: false,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
     }
@@ -45,30 +84,52 @@ export const AIChatDialog = ({
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
+      <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
         <Dialog.Title>AI Assistant</Dialog.Title>
         <Dialog.Content>
-          <Text style={styles.hint}>
-            Describe your task in natural language. For example: "I need to
-            prepare a presentation for tomorrow's meeting"
-          </Text>
-          <TextInput
-            label="Your message"
-            value={message}
-            onChangeText={setMessage}
-            multiline
-            numberOfLines={4}
-            style={styles.input}
-          />
+          <ScrollView style={styles.messagesContainer}>
+            {messages.map((message) => (
+              <View
+                key={message.id}
+                style={[
+                  styles.messageContainer,
+                  message.isUser ? styles.userMessage : styles.aiMessage,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.messageText,
+                    message.isUser
+                      ? styles.userMessageText
+                      : styles.aiMessageText,
+                  ]}
+                >
+                  {message.text}
+                </Text>
+              </View>
+            ))}
+            {loading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" />
+              </View>
+            )}
+          </ScrollView>
         </Dialog.Content>
-        <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
+        <Dialog.Actions style={styles.actions}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Type your message..."
+            style={styles.input}
+            disabled={loading}
+            onSubmitEditing={handleSend}
+          />
           <Button
-            onPress={handleSubmit}
+            onPress={handleSend}
+            disabled={!input.trim() || loading}
             loading={loading}
-            disabled={loading || !message.trim()}
           >
-            Create Task
+            Send
           </Button>
         </Dialog.Actions>
       </Dialog>
@@ -77,11 +138,46 @@ export const AIChatDialog = ({
 };
 
 const styles = StyleSheet.create({
-  hint: {
-    marginBottom: 16,
-    color: "#666",
+  dialog: {
+    maxHeight: "80%",
+  },
+  messagesContainer: {
+    maxHeight: 300,
+  },
+  messageContainer: {
+    padding: 8,
+    marginVertical: 4,
+    borderRadius: 8,
+    maxWidth: "80%",
+  },
+  userMessage: {
+    alignSelf: "flex-end",
+    backgroundColor: "#e3f2fd",
+  },
+  aiMessage: {
+    alignSelf: "flex-start",
+    backgroundColor: "#f5f5f5",
+  },
+  messageText: {
+    fontSize: 16,
+  },
+  userMessageText: {
+    color: "#1976d2",
+  },
+  aiMessageText: {
+    color: "#424242",
+  },
+  loadingContainer: {
+    padding: 8,
+    alignItems: "center",
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
   },
   input: {
-    marginBottom: 8,
+    flex: 1,
+    marginRight: 8,
   },
 });

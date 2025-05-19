@@ -1,228 +1,258 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { View, StyleSheet, SafeAreaView } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  Dimensions,
+} from "react-native";
 import {
   Text,
   Button,
+  Card,
+  ProgressBar,
   IconButton,
   Portal,
   Dialog,
-  TextInput,
 } from "react-native-paper";
-import { router } from "expo-router";
+import { useAuth } from "../context/AuthContext";
 import { useTasks } from "../hooks/useTasks";
 import { useFocus } from "../hooks/useFocus";
+import { router } from "expo-router";
 import { Task } from "../services/taskService";
 
-const FOCUS_TIME = 25 * 60; // 25 минут в секундах
-const BREAK_TIME = 5 * 60; // 5 минут в секундах
+const FOCUS_DURATION = 25 * 60; // 25 минут в секундах
+const { width } = Dimensions.get("window");
 
 export const FocusScreen = () => {
-  const { tasks } = useTasks();
+  const { user } = useAuth();
+  const { tasks, loading: tasksLoading } = useTasks();
   const {
     activeSession,
-    dailyStats,
+    sessions,
+    stats,
+    loading: focusLoading,
+    error: focusError,
     startSession,
     endSession,
-    loading,
-    error,
   } = useFocus();
-  const [timeLeft, setTimeLeft] = useState(FOCUS_TIME);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isBreak, setIsBreak] = useState(false);
-  const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [showTaskSelector, setShowTaskSelector] = useState(false);
-  const [showSessionComplete, setShowSessionComplete] = useState(false);
-  const [sessionNotes, setSessionNotes] = useState("");
 
-  // Форматирование времени в формат MM:SS
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [timeLeft, setTimeLeft] = useState(FOCUS_DURATION);
+  const [isRunning, setIsRunning] = useState(false);
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isRunning && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      handleSessionComplete();
+    }
+    return () => clearInterval(timer);
+  }, [isRunning, timeLeft]);
+
+  const handleStartSession = async () => {
+    if (!selectedTask) {
+      setShowTaskDialog(true);
+      return;
+    }
+    try {
+      await startSession(selectedTask.id);
+      setIsRunning(true);
+    } catch (error) {
+      console.error("Failed to start session:", error);
+    }
+  };
+
+  const handleSessionComplete = async () => {
+    setIsRunning(false);
+    if (activeSession) {
+      try {
+        await endSession();
+        setTimeLeft(FOCUS_DURATION);
+        setSelectedTask(null);
+      } catch (error) {
+        console.error("Failed to end session:", error);
+      }
+    }
+  };
+
+  const handlePauseSession = () => {
+    setIsRunning(false);
+  };
+
+  const handleResumeSession = () => {
+    setIsRunning(true);
+  };
+
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
       .toString()
       .padStart(2, "0")}`;
   };
 
-  // Обработка таймера
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    if (isRunning && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((time) => time - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      // Время истекло
-      setIsRunning(false);
-      if (!isBreak) {
-        // Завершение фокуса
-        setShowSessionComplete(true);
-      } else {
-        // Завершение перерыва
-        setIsBreak(false);
-        setTimeLeft(FOCUS_TIME);
-      }
-    }
-
-    return () => clearInterval(interval);
-  }, [isRunning, timeLeft, isBreak]);
-
-  const handleStart = async () => {
-    if (!currentTask && !isBreak) {
-      setShowTaskSelector(true);
-      return;
-    }
-    if (currentTask) {
-      await startSession(currentTask.id);
-    }
-    setIsRunning(true);
-  };
-
-  const handlePause = () => {
-    setIsRunning(false);
-  };
-
-  const handleReset = () => {
-    setIsRunning(false);
-    setTimeLeft(isBreak ? BREAK_TIME : FOCUS_TIME);
-  };
-
-  const handleTaskSelect = (task: Task) => {
-    setCurrentTask(task);
-    setShowTaskSelector(false);
-    setTimeLeft(FOCUS_TIME);
-  };
-
-  const handleStartBreak = () => {
-    setIsBreak(true);
-    setTimeLeft(BREAK_TIME);
-    setIsRunning(true);
-    setCurrentTask(null);
-  };
-
-  const handleCompleteSession = async () => {
-    if (activeSession) {
-      await endSession(sessionNotes);
-      setShowSessionComplete(false);
-      setSessionNotes("");
-      router.back();
-    }
+  const getProgress = () => {
+    return 1 - timeLeft / FOCUS_DURATION;
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <IconButton icon="arrow-left" onPress={() => router.back()} />
-        <Text variant="headlineMedium">Focus Mode</Text>
+        <IconButton icon="arrow-left" size={24} onPress={() => router.back()} />
+        <Text variant="headlineMedium" style={styles.headerTitle}>
+          Focus Mode
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.content}>
-        {currentTask && !isBreak && (
-          <View style={styles.taskInfo}>
-            <Text variant="titleLarge">{currentTask.title}</Text>
-            <Text variant="bodyMedium">{currentTask.description}</Text>
-          </View>
-        )}
-
+      <ScrollView style={styles.content}>
         <View style={styles.timerContainer}>
-          <Text variant="displayLarge" style={styles.timer}>
+          <Text variant="displayLarge" style={styles.timerText}>
             {formatTime(timeLeft)}
           </Text>
-          <Text variant="titleMedium" style={styles.timerLabel}>
-            {isBreak ? "Break Time" : "Focus Time"}
-          </Text>
-        </View>
-
-        {dailyStats && (
-          <View style={styles.statsContainer}>
-            <Text variant="bodyMedium">
-              Today's Focus: {Math.floor(dailyStats.total_focus_time / 60)}{" "}
-              minutes
-            </Text>
-            <Text variant="bodyMedium">
-              Sessions: {dailyStats.total_sessions}
-            </Text>
+          <ProgressBar
+            progress={getProgress()}
+            style={styles.progressBar}
+            color="#ea4c89"
+          />
+          <View style={styles.timerControls}>
+            {!isRunning ? (
+              <Button
+                mode="contained"
+                onPress={
+                  activeSession ? handleResumeSession : handleStartSession
+                }
+                style={styles.button}
+              >
+                {activeSession ? "Resume" : "Start Focus"}
+              </Button>
+            ) : (
+              <Button
+                mode="contained"
+                onPress={handlePauseSession}
+                style={styles.button}
+              >
+                Pause
+              </Button>
+            )}
+            {activeSession && (
+              <Button
+                mode="outlined"
+                onPress={handleSessionComplete}
+                style={[styles.button, styles.buttonOutlined]}
+              >
+                End Session
+              </Button>
+            )}
           </View>
-        )}
-
-        <View style={styles.controls}>
-          {!isRunning ? (
-            <Button mode="contained" onPress={handleStart} disabled={loading}>
-              {currentTask || isBreak ? "Start" : "Select Task"}
-            </Button>
-          ) : (
-            <Button mode="contained" onPress={handlePause} disabled={loading}>
-              Pause
-            </Button>
-          )}
-          <Button
-            mode="outlined"
-            onPress={handleReset}
-            style={styles.button}
-            disabled={loading}
-          >
-            Reset
-          </Button>
-          {!isBreak && (
-            <Button
-              mode="outlined"
-              onPress={handleStartBreak}
-              style={styles.button}
-              disabled={loading}
-            >
-              Take a Break
-            </Button>
-          )}
         </View>
-      </View>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.cardTitle}>
+              Current Task
+            </Text>
+            {selectedTask ? (
+              <View>
+                <Text variant="bodyLarge" style={styles.taskTitle}>
+                  {selectedTask.title}
+                </Text>
+                {selectedTask.description ? (
+                  <Text variant="bodyMedium" style={styles.taskDescription}>
+                    {selectedTask.description}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <Text variant="bodyMedium" style={styles.noTaskText}>
+                No task selected
+              </Text>
+            )}
+          </Card.Content>
+          <Card.Actions>
+            <Button onPress={() => setShowTaskDialog(true)} textColor="#ea4c89">
+              {selectedTask ? "Change Task" : "Select Task"}
+            </Button>
+          </Card.Actions>
+        </Card>
+
+        {stats.length > 0 && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Today's Progress
+              </Text>
+              <View style={styles.statsContent}>
+                <View style={styles.statItem}>
+                  <Text variant="bodyMedium" style={styles.statValue}>
+                    {Math.floor(
+                      stats[stats.length - 1]?.total_focus_time / 60 || 0
+                    )}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.statLabel}>
+                    Minutes Focused
+                  </Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text variant="bodyMedium" style={styles.statValue}>
+                    {stats[stats.length - 1]?.completed_tasks || 0}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.statLabel}>
+                    Tasks Completed
+                  </Text>
+                </View>
+              </View>
+            </Card.Content>
+          </Card>
+        )}
+      </ScrollView>
 
       <Portal>
         <Dialog
-          visible={showTaskSelector}
-          onDismiss={() => setShowTaskSelector(false)}
+          visible={showTaskDialog}
+          onDismiss={() => setShowTaskDialog(false)}
+          style={styles.dialog}
         >
-          <Dialog.Title>Select Task</Dialog.Title>
+          <Dialog.Title style={styles.dialogTitle}>Select Task</Dialog.Title>
           <Dialog.Content>
-            {tasks
-              .filter((task) => !task.completed)
-              .map((task) => (
-                <Button
+            <ScrollView style={styles.taskList}>
+              {tasks.map((task) => (
+                <Card
                   key={task.id}
-                  mode="outlined"
-                  onPress={() => handleTaskSelect(task)}
-                  style={styles.taskButton}
+                  style={styles.taskItem}
+                  onPress={() => {
+                    setSelectedTask(task);
+                    setShowTaskDialog(false);
+                  }}
                 >
-                  {task.title}
-                </Button>
+                  <Card.Content>
+                    <Text variant="titleMedium" style={styles.taskItemTitle}>
+                      {task.title}
+                    </Text>
+                    {task.description ? (
+                      <Text
+                        variant="bodyMedium"
+                        style={styles.taskItemDescription}
+                      >
+                        {task.description}
+                      </Text>
+                    ) : null}
+                  </Card.Content>
+                </Card>
               ))}
+            </ScrollView>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setShowTaskSelector(false)}>Cancel</Button>
-          </Dialog.Actions>
-        </Dialog>
-
-        <Dialog
-          visible={showSessionComplete}
-          onDismiss={() => setShowSessionComplete(false)}
-        >
-          <Dialog.Title>Session Complete!</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="Session Notes"
-              value={sessionNotes}
-              onChangeText={setSessionNotes}
-              multiline
-              numberOfLines={3}
-              style={styles.notesInput}
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setShowSessionComplete(false)}>
+            <Button
+              onPress={() => setShowTaskDialog(false)}
+              textColor="#ea4c89"
+            >
               Cancel
-            </Button>
-            <Button onPress={handleCompleteSession} loading={loading}>
-              Complete
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -238,51 +268,115 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
+    borderBottomColor: "#eee",
   },
-  content: {
-    flex: 1,
-    padding: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  taskInfo: {
-    width: "100%",
-    padding: 16,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    marginBottom: 32,
+  headerTitle: {
+    color: "#000",
+    fontWeight: "bold",
   },
   timerContainer: {
     alignItems: "center",
-    marginBottom: 32,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    margin: 0,
   },
-  timer: {
+  timerText: {
     fontSize: 72,
     fontWeight: "bold",
+    color: "#000",
+    marginBottom: 16,
   },
-  timerLabel: {
-    marginTop: 8,
-  },
-  controls: {
+  progressBar: {
     width: "100%",
+    height: 8,
+    marginBottom: 16,
+    borderRadius: 4,
+    backgroundColor: "#eee",
+  },
+  timerControls: {
+    flexDirection: "row",
+    justifyContent: "center",
     gap: 12,
+    marginTop: 20,
   },
   button: {
+    borderRadius: 8,
+    paddingVertical: 12,
+    minWidth: 120,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonOutlined: {
+    borderColor: "#ea4c89",
+    borderWidth: 1,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 0,
+  },
+  card: {
+    marginBottom: 16,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    elevation: 2,
+  },
+  cardTitle: {
+    color: "#000",
+    marginBottom: 12,
+    fontWeight: "bold",
+  },
+  taskTitle: {
+    color: "#000",
+    marginBottom: 4,
+  },
+  taskDescription: {
+    color: "#555",
+  },
+  noTaskText: {
+    color: "#555",
+  },
+  statsContent: {
+    flexDirection: "row",
+    justifyContent: "space-around",
     marginTop: 8,
   },
-  taskButton: {
-    marginVertical: 4,
-  },
-  statsContainer: {
-    marginBottom: 24,
+  statItem: {
     alignItems: "center",
   },
-  notesInput: {
-    marginTop: 8,
+  statValue: {
+    color: "#000",
+    fontSize: 24,
+    fontWeight: "bold",
+  },
+  statLabel: {
+    color: "#555",
+    marginTop: 4,
+  },
+  dialog: {
+    backgroundColor: "#fff",
+  },
+  dialogTitle: {
+    color: "#000",
+    fontWeight: "bold",
+  },
+  taskList: {
+    maxHeight: 300,
+  },
+  taskItem: {
+    marginBottom: 8,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    elevation: 1,
+  },
+  taskItemTitle: {
+    color: "#000",
+  },
+  taskItemDescription: {
+    color: "#555",
   },
 });

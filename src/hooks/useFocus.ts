@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "./useAuth";
+import { useAuth } from "../context/AuthContext";
 import {
   focusService,
   FocusSession,
@@ -9,73 +9,82 @@ import {
 export const useFocus = () => {
   const { user } = useAuth();
   const [activeSession, setActiveSession] = useState<FocusSession | null>(null);
-  const [dailyStats, setDailyStats] = useState<SessionStats | null>(null);
+  const [sessions, setSessions] = useState<FocusSession[]>([]);
+  const [stats, setStats] = useState<SessionStats[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Загрузка активной сессии и статистики
   useEffect(() => {
     if (user) {
-      loadActiveSession();
-      loadDailyStats();
+      loadSessions();
+      loadStats();
     }
   }, [user]);
 
-  const loadActiveSession = async () => {
+  const loadSessions = async () => {
     if (!user) return;
     try {
       setLoading(true);
-      const session = await focusService.getActiveSession(user.id);
-      setActiveSession(session);
+      const data = await focusService.getSessions(user.id);
+      setSessions(data);
+      // Находим активную сессию (без end_time)
+      const active = data.find((session) => !session.end_time);
+      setActiveSession(active || null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load active session"
-      );
+      console.error("useFocus: Error loading sessions:", err);
+      setError("Failed to load sessions");
     } finally {
       setLoading(false);
     }
   };
 
-  const loadDailyStats = async () => {
+  const loadStats = async () => {
     if (!user) return;
     try {
       setLoading(true);
-      const today = new Date().toISOString().split("T")[0];
-      const stats = await focusService.getDailyStats(user.id, today);
-      setDailyStats(stats);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load daily stats"
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 7); // Статистика за последнюю неделю
+      const data = await focusService.getStats(
+        user.id,
+        startDate.toISOString().split("T")[0],
+        today.toISOString().split("T")[0]
       );
+      setStats(data);
+    } catch (err) {
+      console.error("useFocus: Error loading stats:", err);
+      setError("Failed to load statistics");
     } finally {
       setLoading(false);
     }
   };
 
-  const startSession = async (taskId?: string) => {
+  const startSession = async (taskId: string | null = null) => {
     if (!user) return;
     try {
       setLoading(true);
       const session = await focusService.startSession(user.id, taskId);
       setActiveSession(session);
-      setError(null);
+      await loadSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start session");
+      console.error("useFocus: Error starting session:", err);
+      setError("Failed to start focus session");
     } finally {
       setLoading(false);
     }
   };
 
-  const endSession = async (notes?: string) => {
+  const endSession = async () => {
     if (!activeSession) return;
     try {
       setLoading(true);
-      const session = await focusService.endSession(activeSession.id, notes);
+      await focusService.endSession(activeSession.id);
       setActiveSession(null);
-      await loadDailyStats(); // Обновляем статистику
-      setError(null);
+      await loadSessions();
+      await loadStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to end session");
+      console.error("useFocus: Error ending session:", err);
+      setError("Failed to end focus session");
     } finally {
       setLoading(false);
     }
@@ -83,11 +92,15 @@ export const useFocus = () => {
 
   return {
     activeSession,
-    dailyStats,
+    sessions,
+    stats,
     loading,
     error,
     startSession,
     endSession,
-    refreshStats: loadDailyStats,
+    refresh: () => {
+      loadSessions();
+      loadStats();
+    },
   };
 };

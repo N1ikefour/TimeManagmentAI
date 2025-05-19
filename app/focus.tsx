@@ -1,4 +1,4 @@
-import { FocusScreen } from "../../src/screens/FocusScreen";
+import { FocusScreen } from "../src/screens/FocusScreen";
 
 export default function Focus() {
   return <FocusScreen />;

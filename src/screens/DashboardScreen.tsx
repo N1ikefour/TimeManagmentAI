@@ -9,6 +9,9 @@ import {
   TextInput,
   Card,
   IconButton,
+  useTheme,
+  Menu,
+  Divider,
 } from "react-native-paper";
 import { useAuth } from "../context/AuthContext";
 import { useTasks } from "../hooks/useTasks";
@@ -17,23 +20,39 @@ import { Task } from "../services/taskService";
 import { AIChatDialog } from "../components/AIChatDialog";
 
 export const DashboardScreen = () => {
+  const theme = useTheme();
   const { user, logout } = useAuth();
   const { tasks, loading, error, addTask, updateTask, deleteTask } = useTasks();
   const [addTaskVisible, setAddTaskVisible] = useState(false);
   const [aiChatVisible, setAiChatVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [newTask, setNewTask] = useState({
     title: "",
     description: "",
     deadline: "",
   });
 
+  const openMenu = () => setMenuVisible(true);
+  const closeMenu = () => setMenuVisible(false);
+
   const handleLogout = async () => {
+    closeMenu();
     try {
       await logout();
       router.replace("/welcome");
     } catch (error) {
       console.error("Logout failed:", error);
     }
+  };
+
+  const handleFocusModePress = () => {
+    closeMenu();
+    router.push("/focus");
+  };
+
+  const handleAIChatPress = () => {
+    closeMenu();
+    setAiChatVisible(true);
   };
 
   const handleAddTask = async () => {
@@ -87,43 +106,78 @@ export const DashboardScreen = () => {
     }
   };
 
+  const today = new Date();
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    weekday: "long",
+  };
+  const formattedDate = today.toLocaleDateString("en-US", options);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text variant="headlineMedium">Dashboard</Text>
-        <Button onPress={handleLogout}>Logout</Button>
+        <View>
+          <Text variant="displaySmall" style={styles.headerTitle}>
+            Today
+          </Text>
+          <Text variant="bodySmall" style={styles.headerDate}>
+            {formattedDate}
+          </Text>
+        </View>
+        <Menu
+          visible={menuVisible}
+          onDismiss={closeMenu}
+          anchor={
+            <IconButton icon="dots-vertical" size={24} onPress={openMenu} />
+          }
+        >
+          <Menu.Item
+            onPress={handleFocusModePress}
+            title="Focus Mode"
+            leadingIcon="timer"
+          />
+          <Menu.Item
+            onPress={handleAIChatPress}
+            title="AI Chat"
+            leadingIcon="robot"
+          />
+          <Divider />
+          <Menu.Item
+            onPress={handleLogout}
+            title="Logout"
+            leadingIcon="logout"
+          />
+        </Menu>
       </View>
 
       <ScrollView style={styles.content}>
         {loading ? (
-          <Text>Loading tasks...</Text>
+          <Text style={styles.loadingText}>Loading tasks...</Text>
         ) : error ? (
-          <Text>Error: {error}</Text>
+          <Text style={styles.errorText}>Error: {error}</Text>
         ) : (
           tasks.map((task) => (
-            <Card key={task.id} style={styles.taskCard}>
-              <Card.Content>
-                <View style={styles.taskHeader}>
-                  <Text variant="titleMedium">{task.title}</Text>
-                  <IconButton
-                    icon={task.completed ? "check-circle" : "circle-outline"}
-                    onPress={() => handleToggleComplete(task)}
-                  />
-                </View>
-                <Text variant="bodyMedium">{task.description}</Text>
-                <View style={styles.taskFooter}>
-                  <Text variant="bodySmall">Priority: {task.priority}</Text>
-                  {task.deadline && (
-                    <Text variant="bodySmall">Deadline: {task.deadline}</Text>
-                  )}
-                </View>
-              </Card.Content>
-              <Card.Actions>
-                <Button onPress={() => handleDeleteTask(task.id)}>
-                  Delete
-                </Button>
-              </Card.Actions>
-            </Card>
+            <View key={task.id} style={styles.taskItem}>
+              <IconButton
+                icon={task.completed ? "check-circle" : "circle-outline"}
+                iconColor={
+                  task.completed ? theme.colors.primary : theme.colors.onSurface
+                }
+                size={24}
+                onPress={() => handleToggleComplete(task)}
+              />
+              <View style={styles.taskContent}>
+                <Text variant="bodyLarge" style={styles.taskTitle}>
+                  {task.title}
+                </Text>
+                {task.description ? (
+                  <Text variant="bodyMedium" style={styles.taskDescription}>
+                    {task.description}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
           ))
         )}
       </ScrollView>
@@ -132,37 +186,64 @@ export const DashboardScreen = () => {
         <Dialog
           visible={addTaskVisible}
           onDismiss={() => setAddTaskVisible(false)}
+          style={styles.addTaskDialog}
         >
-          <Dialog.Title>Add New Task</Dialog.Title>
-          <Dialog.Content>
+          <View style={styles.addTaskContainer}>
             <TextInput
-              label="Title"
+              placeholder="Submit Project Proposal"
               value={newTask.title}
               onChangeText={(text) => setNewTask({ ...newTask, title: text })}
-              style={styles.input}
-            />
-            <TextInput
-              label="Description"
-              value={newTask.description}
-              onChangeText={(text) =>
-                setNewTask({ ...newTask, description: text })
-              }
+              style={styles.addTaskInput}
+              underlineColorAndroid="transparent"
               multiline
-              style={styles.input}
+              autoFocus
             />
-            <TextInput
-              label="Deadline"
-              value={newTask.deadline}
-              onChangeText={(text) =>
-                setNewTask({ ...newTask, deadline: text })
-              }
-              style={styles.input}
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setAddTaskVisible(false)}>Cancel</Button>
-            <Button onPress={handleAddTask}>Add</Button>
-          </Dialog.Actions>
+            <View style={styles.detailButtonsContainer}>
+              <Button
+                icon="calendar-today"
+                mode="outlined"
+                style={styles.detailButton}
+                labelStyle={styles.detailButtonLabel}
+              >
+                Today
+              </Button>
+              <Button
+                icon="flag-outline"
+                mode="outlined"
+                style={styles.detailButton}
+                labelStyle={styles.detailButtonLabel}
+              >
+                Priority
+              </Button>
+              <Button
+                icon="bell-outline"
+                mode="outlined"
+                style={styles.detailButton}
+                labelStyle={styles.detailButtonLabel}
+              >
+                Reminders
+              </Button>
+              <IconButton
+                icon="dots-horizontal"
+                style={styles.detailButton}
+                size={20}
+              />
+            </View>
+            <View style={styles.addTaskFooter}>
+              <View style={styles.inboxContainer}>
+                <IconButton icon="inbox" size={20} />
+                <Text style={styles.inboxText}>Inbox</Text>
+                <IconButton icon="chevron-down" size={20} />
+              </View>
+              <IconButton
+                icon="arrow-up"
+                size={24}
+                onPress={handleAddTask}
+                style={styles.addTaskSendButton}
+                iconColor="#fff"
+              />
+            </View>
+          </View>
         </Dialog>
       </Portal>
 
@@ -172,26 +253,11 @@ export const DashboardScreen = () => {
         onTaskCreated={handleAITaskCreated}
       />
 
-      <View style={styles.fabContainer}>
-        <FAB
-          icon="plus"
-          style={styles.fab}
-          onPress={() => setAddTaskVisible(true)}
-          label="Add Task"
-        />
-        <FAB
-          icon="robot"
-          style={[styles.fab, styles.fabMargin]}
-          onPress={() => setAiChatVisible(true)}
-          label="AI Chat"
-        />
-        <FAB
-          icon="timer"
-          style={[styles.fab, styles.fabMargin]}
-          onPress={() => router.push("/(auth)/focus")}
-          label="Focus Mode"
-        />
-      </View>
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => setAddTaskVisible(true)}
+      />
     </SafeAreaView>
   );
 };
@@ -206,40 +272,119 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
+  },
+  headerTitle: {
+    fontWeight: "bold",
+  },
+  headerDate: {
+    color: "#888",
+    marginTop: 4,
   },
   content: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
-  taskCard: {
-    marginBottom: 16,
-  },
-  taskHeader: {
+  taskItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
+    alignItems: "flex-start",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
   },
-  taskFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
+  taskContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  taskTitle: {},
+  taskDescription: {
+    color: "#555",
+    marginTop: 4,
+  },
+  loadingText: {
+    textAlign: "center",
+    marginTop: 20,
+  },
+  errorText: {
+    textAlign: "center",
+    marginTop: 20,
+    color: "red",
   },
   input: {
     marginBottom: 16,
   },
-  fabContainer: {
-    position: "absolute",
-    right: 16,
-    bottom: 16,
-    alignItems: "flex-end",
-  },
   fab: {
-    backgroundColor: "#6200ee",
+    position: "absolute",
+    margin: 16,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#ea4c89",
+    borderRadius: 30,
+    width: 60,
+    height: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 8,
   },
-  fabMargin: {
-    marginTop: 16,
+  addTaskDialog: {
+    backgroundColor: "#fff",
+    marginHorizontal: 0,
+    marginBottom: 0,
+    marginTop: "auto",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    width: "100%",
+  },
+  addTaskContainer: {
+    width: "100%",
+  },
+  addTaskInput: {
+    backgroundColor: "transparent",
+    fontSize: 18,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    marginBottom: 16,
+  },
+  detailButtonsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 16,
+    alignItems: "flex-start",
+  },
+  detailButton: {
+    marginRight: 8,
+    marginBottom: 8,
+    borderRadius: 20,
+    borderColor: "#ddd",
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "transparent",
+    justifyContent: "center",
+  },
+  detailButtonLabel: {
+    fontSize: 12,
+  },
+  addTaskFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  inboxContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  inboxText: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  addTaskSendButton: {
+    backgroundColor: "#ea4c89",
+    borderRadius: 30,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
